@@ -94,10 +94,22 @@ class BrowserClient:
         try:
             from patchright.sync_api import sync_playwright
             self._driver = "patchright"
+            return sync_playwright()
         except ImportError:
+            pass
+        try:
             from playwright.sync_api import sync_playwright
             self._driver = "playwright"
-        return sync_playwright()
+            return sync_playwright()
+        except ImportError:
+            raise RuntimeError(
+                "The browser backend needs Playwright, which isn't installed.\n"
+                "This is the free path (uses your own Chrome + home IP, no account).\n"
+                "Install it once:\n"
+                "  pip install -e \".[browser]\"\n"
+                "  playwright install chromium\n"
+                "Then re-run. (Or use --unlocker <provider> for the paid API path.)"
+            ) from None
 
     def start(self) -> None:
         self._pw = self._sync_playwright().start()

@@ -76,9 +76,19 @@ overwrite each run). `--max-age 0` (default) always fetches.
 ## Getting data past DataDome
 
 `api.prizepicks.com` blocks on IP reputation + browser fingerprint, so you need
-a trusted residential IP. Pick one backend.
+a trusted residential IP. Two backends, and the tradeoff is money vs. effort:
 
-### Web-unlocker API (recommended, fully automated)
+- **Free, no account** - the local browser backend uses *your own Chrome on your
+  own home internet*. Your home IP is already residential, which is exactly what
+  the paid services rent. Costs nothing; occasionally needs a one-time
+  challenge-solve.
+- **Paid, turnkey** - a web-unlocker API rents residential IPs and handles
+  everything remotely. Zero effort, but needs an account and credits.
+
+There is no free *and* effortless option - the cost is always the residential
+IPs. Pick based on which you'd rather spend.
+
+### Web-unlocker API (paid, turnkey)
 
 One API call per fetch; residential proxies and DataDome handled remotely. No
 browser, no manual steps. Works headless and on a schedule.
@@ -92,9 +102,10 @@ Providers: `zenrows`, `scraperapi`, `scrapingbee`, or `generic` with
 `--unlocker-template 'https://api.provider.com/?token={key}&url={url}'`.
 The residential/antibot tier each provider needs is enabled automatically.
 
-### Local browser
+### Local browser (free, your own IP)
 
-Runs real Chrome via Playwright. Needs a residential IP to pass reliably.
+Runs real Chrome via Playwright on your own connection - no account. Install the
+extra first: `pip install -e ".[browser]" && playwright install chromium`.
 
 ```bash
 # Residential proxy, headless, unattended:

@@ -218,6 +218,9 @@ def run_command(args) -> int:
                   "  * Some providers need higher tiers (e.g. ScraperAPI ultra_premium).",
                   file=sys.stderr)
             return 2
+        if name == "RuntimeError":  # user-facing setup errors (e.g. missing Playwright)
+            print(f"\n{exc}", file=sys.stderr)
+            return 2
         raise
 
 
