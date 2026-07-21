@@ -34,16 +34,19 @@ def projections_url(league_id: int | str, per_page: int = 250,
 
 
 def resolve_league_id(name_or_id: str) -> int | str:
-    """Resolve a league name (e.g. ``NBA``) or numeric id to an id."""
+    """Resolve a league name (e.g. ``NBA``, ``LoL``) or numeric id to an id.
+
+    Name matching is case-insensitive.
+    """
     s = str(name_or_id).strip()
     if s.isdigit():
         return int(s)
-    upper = s.upper()
-    if upper in DEFAULT_LEAGUE_IDS:
-        return DEFAULT_LEAGUE_IDS[upper]
+    lookup = {k.upper(): v for k, v in DEFAULT_LEAGUE_IDS.items()}
+    if s.upper() in lookup:
+        return lookup[s.upper()]
     raise ValueError(
-        f"Unknown league '{name_or_id}'. Pass a numeric id, or run "
-        f"`prizepicks leagues` to list live ids."
+        f"Unknown league '{name_or_id}'. Pass a numeric id (e.g. 121 for LoL), "
+        f"or run `pps leagues` to list live ids."
     )
 
 

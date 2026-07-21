@@ -4,7 +4,17 @@ from pathlib import Path
 import pytest
 
 from prizepicks_scraper.parse import parse_projections
-from prizepicks_scraper.leagues import parse_leagues
+from prizepicks_scraper.leagues import parse_leagues, resolve_league_id
+
+
+def test_resolve_league_id_case_insensitive():
+    assert resolve_league_id("LoL") == 121
+    assert resolve_league_id("lol") == 121
+    assert resolve_league_id("NBA") == 7
+    assert resolve_league_id("nba") == 7
+    assert resolve_league_id("121") == 121   # numeric id passes through
+    with pytest.raises(ValueError):
+        resolve_league_id("notaleague")
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_projections.json"
 
