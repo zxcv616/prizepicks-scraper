@@ -1,0 +1,83 @@
+{
+  "data": [
+    {
+      "type": "projection",
+      "id": "1001",
+      "attributes": {
+        "line_score": 25.5,
+        "description": "LAL vs BOS",
+        "start_time": "2026-07-21T23:30:00-04:00",
+        "status": "pre_game",
+        "odds_type": "standard",
+        "is_promo": false,
+        "stat_type": "Points"
+      },
+      "relationships": {
+        "new_player": { "data": { "type": "new_player", "id": "500" } },
+        "league": { "data": { "type": "league", "id": "7" } },
+        "stat_type": { "data": { "type": "stat_type", "id": "9" } }
+      }
+    },
+    {
+      "type": "projection",
+      "id": "1002",
+      "attributes": {
+        "line_score": 7.5,
+        "description": "LAL vs BOS",
+        "start_time": "2026-07-21T23:30:00-04:00",
+        "status": "pre_game",
+        "odds_type": "demon",
+        "is_promo": false
+      },
+      "relationships": {
+        "new_player": { "data": { "type": "new_player", "id": "500" } },
+        "league": { "data": { "type": "league", "id": "7" } },
+        "stat_type": { "data": { "type": "stat_type", "id": "12" } }
+      }
+    },
+    {
+      "type": "projection",
+      "id": "1003",
+      "attributes": {
+        "line_score": "1.5",
+        "description": "NYY vs TOR",
+        "start_time": "2026-07-22T19:05:00-04:00",
+        "status": "pre_game",
+        "odds_type": "goblin",
+        "is_promo": true
+      },
+      "relationships": {
+        "new_player": { "data": { "type": "new_player", "id": "501" } },
+        "league": { "data": { "type": "league", "id": "2" } },
+        "stat_type": { "data": { "type": "stat_type", "id": "20" } }
+      }
+    }
+  ],
+  "included": [
+    {
+      "type": "new_player",
+      "id": "500",
+      "attributes": {
+        "name": "LeBron James",
+        "team": "LAL",
+        "position": "F",
+        "league": "NBA"
+      }
+    },
+    {
+      "type": "new_player",
+      "id": "501",
+      "attributes": {
+        "name": "Aaron Judge",
+        "team": "NYY",
+        "position": "RF",
+        "league": "MLB"
+      }
+    },
+    { "type": "league", "id": "7", "attributes": { "name": "NBA" } },
+    { "type": "league", "id": "2", "attributes": { "name": "MLB" } },
+    { "type": "stat_type", "id": "9", "attributes": { "name": "Points" } },
+    { "type": "stat_type", "id": "12", "attributes": { "name": "Assists" } },
+    { "type": "stat_type", "id": "20", "attributes": { "name": "Home Runs" } }
+  ]
+}

@@ -1,0 +1,5 @@
+playwright>=1.40
+# Recommended: a patched Playwright that removes automation leaks DataDome
+# detects. Auto-used if present. Install its browser with: patchright install chromium
+patchright>=1.40
+pytest>=7

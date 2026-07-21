@@ -1,0 +1,23 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Browser profile (holds DataDome clearance cookies — never commit)
+.pp_profile/
+
+# Scraped data
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+raw/
+data/
+
+# Env
+.venv/
+venv/
+.env
