@@ -1,197 +1,140 @@
 # prizepicks-scraper
 
-Fetch and parse [PrizePicks](https://www.prizepicks.com) projections (player prop
-lines) into clean, timestamped rows you can analyze. Handles the site's
-**DataDome** bot protection by fetching through a real browser session, and
-denormalizes PrizePicks' JSON:API response into flat records.
+Fetch PrizePicks projections (player prop lines) and store them as clean,
+timestamped rows. Handles the site's DataDome bot protection and denormalizes
+the JSON:API response into flat records you can query.
 
-> ⚠️ **Read [Legal / responsible use](#legal--responsible-use) first.** This is
-> for personal, educational use. PrizePicks has no public API and their Terms of
-> Service prohibit automated access. Use gently and at your own risk.
-
-## What it does
-
-- Pulls the undocumented `api.prizepicks.com/projections` endpoint the web app uses.
-- Gets past **DataDome** by driving a real Chromium session (Playwright) and
-  fetching the API through that authenticated context — no fragile cookie
-  transplanting.
-- Denormalizes the JSON:API `data` + `included` structure into flat rows:
-  player, team, position, league, stat type, line, `odds_type`
-  (`standard` / `demon` / `goblin`), start time, status.
-- Stores **append-only, timestamped snapshots** to SQLite (or CSV / JSON) so you
-  can track line movement over time.
+Personal/educational use. Not affiliated with PrizePicks. See [Notes](#notes).
 
 ## Install
 
 ```bash
-git clone <your-repo-url> prizepicks-scraper
+git clone https://github.com/zxcv616/prizepicks-scraper
 cd prizepicks-scraper
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-playwright install chromium      # one-time browser download
+```
+
+For the local-browser backend only (not needed for the unlocker backend):
+
+```bash
+pip install playwright patchright && playwright install chromium
 ```
 
 ## Usage
 
-### List live league ids
+Two equivalent ways: an interactive shell, or direct commands.
+
+### Interactive shell
+
+Run with no arguments:
+
+```
+$ prizepicks
+prizepicks 0.1.0 - interactive shell
+commands: leagues | scrape <league...> | set <k> <v> | show | help | exit
+
+prizepicks> set unlocker zenrows
+prizepicks> scrape LoL CS2
+prizepicks> show
+prizepicks> exit
+```
+
+- `leagues` - list league ids
+- `scrape <league...>` - fetch and store (names or ids: `scrape LoL 2 CS2`)
+- `set <key> <value>` - change a setting (`set out data/lol.csv`, `set unlocker zenrows`)
+- `show` - print current settings
+- `help`, `exit`
+
+### Direct commands
+
 ```bash
 prizepicks leagues
+prizepicks scrape --league LoL CS2 --out data/projections.db
+prizepicks scrape --league MLB --out data/mlb.csv
+prizepicks parse-file raw.json --out out.csv     # parse a saved payload, offline
 ```
 
-### Scrape projections
-```bash
-# One league to SQLite (append-only snapshots)
-prizepicks scrape --league NBA --out data/projections.db
+Output format follows the file extension: `.db`/`.sqlite` (SQLite, append-only
+snapshots), `.csv`, or `.json`.
 
-# Multiple leagues, by name or numeric id, to CSV
-prizepicks scrape --league NBA NFL 2 --out data/props.csv
+## Getting data past DataDome
 
-# Also keep the raw JSON payloads (great for re-parsing / debugging)
-prizepicks scrape --league NBA --out data/projections.db --save-raw raw/
-```
+`api.prizepicks.com` blocks on IP reputation + browser fingerprint, so you need
+a trusted residential IP. Pick one backend.
 
-## Fully automated (no human in the loop)
+### Web-unlocker API (recommended, fully automated)
 
-`api.prizepicks.com` is behind **DataDome**, which blocks on **IP reputation +
-browser fingerprint**. Hands-off operation therefore requires a *trusted
-residential IP* — there is no free, purely-local bypass. Two automated options:
-
-### Option A — Web-unlocker API (most efficient, no browser)
-One request per fetch; the service runs residential proxies + a real browser +
-DataDome solving remotely and returns the JSON. Works headless, unattended, e.g.
-from `cron`. Providers offer free trial credits.
+One API call per fetch; residential proxies and DataDome handled remotely. No
+browser, no manual steps. Works headless and on a schedule.
 
 ```bash
-export PP_UNLOCKER_KEY=your_key_here
-prizepicks --unlocker zenrows     scrape --league NBA NFL --out data/props.db
-prizepicks --unlocker scraperapi  scrape --league NBA     --out data/props.db
-# any other provider via a URL template:
-prizepicks --unlocker generic --unlocker-template \
-  'https://api.provider.com/?token={key}&render=true&url={url}' \
-  scrape --league NBA -o data/props.db
+export PP_UNLOCKER_KEY=your_key
+prizepicks --unlocker zenrows scrape --league LoL --out data/projections.db
 ```
-Supported presets (`--unlocker`): `zenrows`, `scraperapi`, `scrapingbee`,
-`generic`. Make sure your plan has the **residential / antibot** tier enabled —
-DataDome needs it (ScraperAPI: `ultra_premium`; ZenRows: `premium_proxy` +
-`antibot`; both are set for you). Bright Data / Oxylabs unlockers are used as
-proxies — plug their endpoint into `--proxy` on the browser backend below.
 
-### Option B — Residential proxy + built-in stealth browser
-Run the local browser (real Chrome + [patchright]) through a **residential**
-proxy, headless and unattended. On a clean residential IP DataDome usually
-passes with no challenge:
+Providers: `zenrows`, `scraperapi`, `scrapingbee`, or `generic` with
+`--unlocker-template 'https://api.provider.com/?token={key}&url={url}'`.
+The residential/antibot tier each provider needs is enabled automatically.
+
+### Local browser
+
+Runs real Chrome via Playwright. Needs a residential IP to pass reliably.
+
 ```bash
-prizepicks --proxy http://user:pass@residential-host:port \
-  scrape --league NBA --out data/projections.db
+# Residential proxy, headless, unattended:
+prizepicks --proxy http://user:pass@host:port scrape --league LoL -o data/props.db
+
+# Or attach to a Chrome you drive yourself (most reliable, one-time manual):
+#   1. /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+#        --remote-debugging-port=9222 --user-data-dir=/tmp/pp-chrome
+#   2. In that window, load https://app.prizepicks.com
+prizepicks --cdp http://127.0.0.1:9222 scrape --league LoL -o data/props.db
 ```
 
-Rough guide: a web-unlocker is simplest and most reliable (~$1.5–5 per 1k
-requests); a residential proxy is cheaper at volume (~$/GB, and the board JSON
-is tiny) but you own the stealth. Both are fully hands-off.
+## Output columns
 
----
+`projection_id, scraped_at, league, league_id, player_id, player_name, team,
+position, stat_type, line_score, odds_type, start_time, status, description,
+is_promo`
 
-### Manual / interactive fallbacks
+`odds_type` is `standard`, `demon`, or `goblin` (the last two are
+payout-adjusted lines). Rows are keyed by `(projection_id, scraped_at)`, so
+re-running builds a history of line movement.
 
-If you'd rather not pay for a proxy/unlocker, these need a one-time human step.
-`api.prizepicks.com` fingerprints automation aggressively; escalate in order:
+Query a SQLite result:
 
-**1. Real Chrome + patched driver (default).** By default the tool launches your
-real installed Chrome (`--channel chrome`) and auto-uses
-[patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) if installed
-(removes the automation leaks DataDome keys on):
 ```bash
-pip install patchright && patchright install chromium
-prizepicks --headful scrape --league NBA --out data/projections.db
+sqlite3 data/projections.db "select player_name, stat_type, line_score, odds_type
+  from projections limit 10"
 ```
 
-**2. Attach to your own Chrome over CDP (most reliable).** Drive your genuine
-browser past the wall yourself, then let the tool fetch through that session —
-real fingerprint, real cookies. Fully quit Chrome first, then:
-```bash
-# macOS (use a scratch profile so it can enable remote debugging):
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --remote-debugging-port=9222 --user-data-dir=/tmp/pp-chrome
-
-# In that Chrome window, browse to https://app.prizepicks.com and make sure the
-# board loads (solve any challenge). Then, in another terminal:
-prizepicks --cdp http://localhost:9222 scrape --league NBA --out data/projections.db
-```
-
-**3. Change IP / go automated.** Datacenter/VPN IPs (and IPs just flagged by
-repeated attempts) are blocked. Wait for a cooldown, switch networks, or use the
-[fully-automated](#fully-automated-no-human-in-the-loop) residential options above.
-
-> DataDome evasion is an arms race — no method is guaranteed, and what works can
-> change. CDP-attach is the most durable free method (nothing is synthetic); a
-> web-unlocker is the most reliable automated one.
-
-[patchright]: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright
-
-### Parse a saved payload offline (no network, no browser)
-```bash
-prizepicks parse-file raw/league_7_2026-07-20.json --out out.csv
-```
-
-Output columns: `projection_id, scraped_at, league, league_id, player_id,
-player_name, team, position, stat_type, line_score, odds_type, start_time,
-status, description, is_promo`.
-
-## Use as a library
+## Library use
 
 ```python
 from prizepicks_scraper import parse_projections
-from prizepicks_scraper.client import BrowserClient
+from prizepicks_scraper.unlocker import UnlockerClient
 
-with BrowserClient(headful=True) as client:
-    payload = client.fetch_projections("NBA")   # or a numeric id
-rows = parse_projections(payload)
-for r in rows[:5]:
+with UnlockerClient("zenrows", api_key="...") as c:
+    payload = c.fetch_projections("LoL")
+for r in parse_projections(payload):
     print(r.player_name, r.stat_type, r.line_score, r.odds_type)
 ```
-
-## How it works
-
-```
-app.prizepicks.com  ──(Playwright, real browser)──►  DataDome clearance cookie
-        │                                                   │
-        ▼                                                   ▼
-api.prizepicks.com/projections  ◄── page.request.get (same authenticated ctx)
-        │
-        ▼
-JSON:API  { data:[projection…], included:[new_player, league, stat_type…] }
-        │
-   parse.py  (join data ↔ included by (type,id))
-        │
-        ▼
-flat Projection rows ──►  SQLite / CSV / JSON  (append-only, timestamped)
-```
-
-- `client.py` — browser-backed fetcher (persistent profile keeps you cleared).
-- `parse.py` — JSON:API denormalizer. **Fully unit-tested against fixtures**, so
-  the data pipeline is verifiable offline even when the live site is unreachable.
-- `store.py` — SQLite (append-only, PK `projection_id + scraped_at`) / CSV / JSON.
-- `leagues.py`, `models.py`, `cli.py`.
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest           # parser + storage tests run offline, no network
+pytest            # runs offline, no network
 ```
 
-## Legal / responsible use
+## Notes
 
-- PrizePicks provides **no public API**; their
-  [Terms of Service](https://www.prizepicks.com/help-center/terms-of-service)
-  prohibit automated access/scraping. This project is provided for **personal,
-  educational** use only and is **not affiliated with or endorsed by PrizePicks**.
-- Only public board data is fetched — **do not** use this to access an account,
-  place entries, or defeat security measures.
-- Be polite: the scraper is single-threaded with a delay between requests. Don't
-  hammer the endpoint.
-- Anti-bot protection and the endpoint shape can change at any time and break
-  this tool. Expect maintenance.
-- If you need reliable, licensed PrizePicks lines for anything serious, use a
-  commercial odds API (e.g. OpticOdds, The Odds API) instead.
-- MIT licensed — no warranty. You are responsible for how you use it.
+- No public API exists; PrizePicks' Terms of Service prohibit automated access.
+  This is for personal, educational use only. Fetches public board data only -
+  no accounts, no entries.
+- Keep requests gentle. The scraper is single-threaded with a delay between calls.
+- Anti-bot protection and the endpoint can change and break this tool.
+- Never commit your API key. Pass it via `PP_UNLOCKER_KEY` or `--api-key`.
+- MIT licensed. No warranty. You are responsible for how you use it.
+```

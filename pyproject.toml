@@ -11,11 +11,12 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Open Source Contributors" }]
 keywords = ["prizepicks", "dfs", "sports", "scraper", "props", "odds"]
-dependencies = [
-    "playwright>=1.40",
-]
+# No required deps: the web-unlocker backend uses only the standard library.
+dependencies = []
 
 [project.optional-dependencies]
+# Local-browser backend (not needed for --unlocker).
+browser = ["playwright>=1.40", "patchright>=1.40"]
 dev = ["pytest>=7"]
 
 [project.scripts]

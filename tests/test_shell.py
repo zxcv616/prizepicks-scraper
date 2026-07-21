@@ -1,0 +1,55 @@
+import argparse
+from pathlib import Path
+
+from prizepicks_scraper.shell import PrizePicksShell, _initial_state
+
+FIXTURE = Path(__file__).parent / "fixtures" / "sample_projections.json"
+
+
+def _blank_args(**kw):
+    base = dict(unlocker=None, api_key=None, unlocker_template=None, out=None,
+                per_page=None, save_raw=None, proxy=None, cdp=None, profile=None,
+                headful=None, channel=None, no_chrome=None)
+    base.update(kw)
+    return argparse.Namespace(**base)
+
+
+def test_initial_state_seeds_from_args():
+    state = _initial_state(_blank_args(unlocker="zenrows"))
+    assert state["unlocker"] == "zenrows"
+    assert state["out"] == "data/projections.db"  # default retained
+
+
+def test_set_bool_and_int_coercion():
+    s = PrizePicksShell(_blank_args())
+    s.onecmd("set headful true")
+    assert s.state["headful"] is True
+    s.onecmd("set per_page 50")
+    assert s.state["per_page"] == 50
+
+
+def test_set_none_clears():
+    s = PrizePicksShell(_blank_args(proxy="http://x"))
+    s.onecmd("set proxy none")
+    assert s.state["proxy"] is None
+
+
+def test_set_unknown_key_ignored():
+    s = PrizePicksShell(_blank_args())
+    before = dict(s.state)
+    s.onecmd("set nonsense value")
+    assert s.state == before
+
+
+def test_parse_file_through_shell(tmp_path):
+    out = tmp_path / "o.csv"
+    s = PrizePicksShell(_blank_args())
+    s.onecmd(f"parse-file {FIXTURE} {out}")
+    assert out.exists()
+    assert "LeBron James" in out.read_text()
+
+
+def test_exit_returns_true():
+    s = PrizePicksShell(_blank_args())
+    assert s.onecmd("exit") is True
+    assert s.onecmd("quit") is True

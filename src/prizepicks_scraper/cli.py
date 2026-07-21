@@ -1,5 +1,7 @@
 """Command-line interface: ``prizepicks <command>``.
 
+Run with no command to open an interactive shell (see shell.py).
+
 Commands:
     leagues                       List live league ids.
     scrape --league NBA           Fetch + parse + store projections.
@@ -128,7 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Unlocker API key (or set env PP_UNLOCKER_KEY).")
     g.add_argument("--unlocker-template", default=None,
                    help="For --unlocker generic: URL template with {url} and {key}.")
-    sub = p.add_subparsers(dest="command", required=True)
+    # Optional: with no subcommand, main() launches the interactive shell.
+    sub = p.add_subparsers(dest="command", required=False)
 
     sp = sub.add_parser("leagues", help="List live league ids.")
     sp.set_defaults(func=cmd_leagues)
@@ -150,12 +153,16 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+def run_command(args) -> int:
+    """Dispatch one parsed command with friendly error handling.
+
+    Shared by the direct CLI and the interactive shell.
+    """
     try:
         return args.func(args)
-    except Exception as exc:  # keep CLI output clean; no traceback dump
-        # DataDomeBlocked lives in client (imported lazily); match by name.
+    except Exception as exc:  # keep output clean; no traceback dump
+        # DataDomeBlocked / UnlockerError live in lazily-imported modules;
+        # match by name to avoid importing Playwright etc. here.
         name = type(exc).__name__
         if name == "DataDomeBlocked":
             print(f"\nBlocked by DataDome bot protection.\n{exc}\n\n"
@@ -175,6 +182,15 @@ def main(argv=None) -> int:
                   file=sys.stderr)
             return 2
         raise
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    if not getattr(args, "command", None):
+        # No subcommand -> interactive shell (like a REPL).
+        from .shell import run_shell
+        return run_shell(args)
+    return run_command(args)
 
 
 if __name__ == "__main__":
