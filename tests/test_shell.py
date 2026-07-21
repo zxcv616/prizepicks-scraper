@@ -53,3 +53,18 @@ def test_exit_returns_true():
     s = PrizePicksShell(_blank_args())
     assert s.onecmd("exit") is True
     assert s.onecmd("quit") is True
+
+
+def test_banner_lines_are_aligned(monkeypatch):
+    import prizepicks_scraper.shell as sh
+    monkeypatch.setattr(sh, "_use_color", lambda: True)
+    banner = sh._banner(dict(sh._DEFAULTS))
+    widths = {sh._vis_len(line) for line in banner.split("\n")}
+    assert len(widths) == 1  # every bordered row is the same visible width
+
+
+def test_banner_plain_when_no_color(monkeypatch):
+    import prizepicks_scraper.shell as sh
+    monkeypatch.setattr(sh, "_use_color", lambda: False)
+    banner = sh._banner(dict(sh._DEFAULTS))
+    assert "\x1b[" not in banner  # no ANSI codes when color disabled

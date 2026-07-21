@@ -9,11 +9,79 @@ from __future__ import annotations
 import argparse
 import cmd
 import os
+import re
 import shlex
+import shutil
 import sys
 
 from . import __version__
 from .cli import cmd_leagues, cmd_parse_file, cmd_scrape, run_command
+
+# --- terminal styling (no dependencies) -------------------------------------
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _use_color() -> bool:
+    return sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+
+def _c(code: str) -> str:
+    return f"\x1b[{code}m" if _use_color() else ""
+
+
+ORANGE = "38;5;208"
+DIM = "2"
+BOLD = "1"
+RESET = "0"
+
+# Block-letter "pps".
+_LOGO = r"""
+ ██████╗  ██████╗  ███████╗
+ ██╔══██╗ ██╔══██╗ ██╔════╝
+ ██████╔╝ ██████╔╝ ███████╗
+ ██╔═══╝  ██╔═══╝  ╚════██║
+ ██║      ██║      ███████║
+ ╚═╝      ╚═╝      ╚══════╝
+""".strip("\n").splitlines()
+
+
+def _vis_len(s: str) -> int:
+    """Visible length, ignoring ANSI color codes."""
+    return len(_ANSI_RE.sub("", s))
+
+
+def _banner(state: dict) -> str:
+    width = min(shutil.get_terminal_size((80, 24)).columns, 80)
+    inner = width - 2
+    o, d, b, r = _c(ORANGE), _c(DIM), _c(BOLD), _c(RESET)
+
+    title = f"{b}{o}pps{r}{d} v{__version__}{r}"
+    right = [
+        f"{b}prizepicks-scraper{r}",
+        f"{d}PrizePicks projections scraper{r}",
+    ]
+    backend = state["unlocker"] or ("cdp" if state["cdp"] else "browser")
+
+    # Assemble the content rows: logo on the left, labels on the right.
+    rows: list[str] = [""]
+    for i, line in enumerate(_LOGO):
+        rlabel = right[i - 1] if 1 <= i <= len(right) else ""
+        rows.append(f"  {o}{line}{r}   {rlabel}")
+    rows += [
+        "",
+        f"  {d}backend{r} {backend}    {d}output{r} {state['out']}",
+        f"  {d}commands{r} leagues · scrape <league...> · set · show · help · exit",
+        "",
+    ]
+
+    # Draw the rounded box, padding each row to the inner width.
+    top = f"{o}╭─{r} {title} {o}" + "─" * max(0, inner - _vis_len(title) - 3) + f"╮{r}"
+    out = [top]
+    for row in rows:
+        pad = max(0, inner - _vis_len(row))
+        out.append(f"{o}│{r}{row}{' ' * pad}{o}│{r}")
+    out.append(f"{o}╰{'─' * inner}╯{r}")
+    return "\n".join(out)
 
 # Session settings and their defaults. `set <key> <value>` changes these.
 _DEFAULTS = {
@@ -47,11 +115,16 @@ def _initial_state(args) -> dict:
 
 class PrizePicksShell(cmd.Cmd):
     intro = ""  # printed manually in run_shell so we can style it
-    prompt = "pps> "
 
     def __init__(self, args):
         super().__init__()
         self.state = _initial_state(args)
+        # Styled prompt. Non-printing sequences are wrapped in \001..\002 so
+        # readline counts the visible width correctly.
+        if _use_color():
+            self.prompt = f"\001\x1b[{ORANGE}m\002pps ❯\001\x1b[0m\002 "
+        else:
+            self.prompt = "pps> "
 
     # -- helpers -----------------------------------------------------------
     def _ns(self, **overrides) -> argparse.Namespace:
@@ -155,10 +228,10 @@ def run_shell(args) -> int:
         build_parser().print_help()
         return 0
     shell = PrizePicksShell(args)
-    print(f"pps {__version__} - prizepicks-scraper interactive shell")
-    print("commands: leagues | scrape <league...> | set <k> <v> | show | help | exit")
-    backend = shell.state["unlocker"] or ("cdp" if shell.state["cdp"] else "browser")
-    print(f"backend: {backend}   output: {shell.state['out']}\n")
+    if _use_color():
+        sys.stdout.write("\x1b[2J\x1b[3J\x1b[H")  # clear screen + scrollback
+    print(_banner(shell.state))
+    print()
     try:
         shell.cmdloop()
     except KeyboardInterrupt:

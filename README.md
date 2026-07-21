@@ -27,17 +27,15 @@ Two equivalent ways: an interactive shell, or direct commands.
 
 ### Interactive shell
 
-Run with no arguments:
+Run with no arguments to open the shell:
 
 ```
 $ pps
-pps 0.1.0 - prizepicks-scraper interactive shell
-commands: leagues | scrape <league...> | set <k> <v> | show | help | exit
 
-pps> set unlocker zenrows
-pps> scrape LoL CS2
-pps> show
-pps> exit
+pps ❯ set unlocker zenrows
+pps ❯ scrape LoL CS2
+pps ❯ show
+pps ❯ exit
 ```
 
 - `leagues` - list league ids
