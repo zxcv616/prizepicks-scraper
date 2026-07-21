@@ -63,6 +63,30 @@ def test_banner_lines_are_aligned(monkeypatch):
     assert len(widths) == 1  # every bordered row is the same visible width
 
 
+def test_results_reads_db(tmp_path, capsys):
+    import json
+    from prizepicks_scraper.parse import parse_projections
+    from prizepicks_scraper.store import write_sqlite
+
+    payload = json.loads(FIXTURE.read_text())
+    rows = parse_projections(payload, scraped_at="2026-07-21T00:00:00+00:00")
+    db = tmp_path / "p.db"
+    write_sqlite(rows, db)
+
+    s = PrizePicksShell(_blank_args(out=str(db)))
+    s.onecmd("results NBA")
+    out = capsys.readouterr().out
+    assert "LeBron James" in out
+    assert "Aaron Judge" not in out   # filtered to NBA
+    assert "2 row(s)" in out
+
+
+def test_results_no_file(capsys):
+    s = PrizePicksShell(_blank_args(out="does/not/exist.db"))
+    s.onecmd("results")
+    assert "no data yet" in capsys.readouterr().out
+
+
 def test_banner_plain_when_no_color(monkeypatch):
     import prizepicks_scraper.shell as sh
     monkeypatch.setattr(sh, "_use_color", lambda: False)

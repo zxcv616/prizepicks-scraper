@@ -42,6 +42,7 @@ pps ❯ exit
 
 - `leagues` - list league ids
 - `scrape <league...>` - fetch and store (names or ids: `scrape LoL 2 CS2`)
+- `results [league] [N]` - show recent scraped rows (`results LoL 20`)
 - `set <key> <value>` - change a setting (`set out data/lol.csv`, `set unlocker zenrows`)
 - `show` - print current settings
 - `help`, `exit`

@@ -70,7 +70,7 @@ def _banner(state: dict) -> str:
     rows += [
         "",
         f"  {d}backend{r} {backend}    {d}output{r} {state['out']}",
-        f"  {d}commands{r} leagues · scrape <league...> · set · show · help · exit",
+        f"  {d}commands{r} leagues · scrape <league...> · results · set · show · exit",
         "",
     ]
 
@@ -101,6 +101,66 @@ _DEFAULTS = {
 
 _BOOL_KEYS = {"headful", "no_chrome"}
 _INT_KEYS = {"per_page"}
+
+
+# Columns shown by the `results` command.
+_VIEW_COLS = ["player_name", "team", "stat_type", "line_score", "odds_type", "league"]
+
+
+def _load_recent(out_path: str, league: str | None, limit: int) -> list[dict]:
+    """Load the most recent rows from a scrape output file (db/csv/json)."""
+    import csv as _csv
+    import json as _json
+    import sqlite3
+    from pathlib import Path
+
+    path = Path(out_path)
+    if not path.exists():
+        raise FileNotFoundError(out_path)
+    ext = path.suffix.lower()
+
+    if ext in (".db", ".sqlite", ".sqlite3"):
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cols = ", ".join(_VIEW_COLS)
+            sql = f"SELECT {cols} FROM projections"
+            params: list = []
+            if league:
+                sql += " WHERE UPPER(league) = ?"
+                params.append(league.upper())
+            sql += " ORDER BY scraped_at DESC LIMIT ?"
+            params.append(limit)
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        finally:
+            conn.close()
+
+    # CSV / JSON are single-snapshot overwrites; read, filter, take last N.
+    if ext == ".csv":
+        with open(path, newline="", encoding="utf-8") as fh:
+            data = list(_csv.DictReader(fh))
+    else:
+        data = _json.loads(path.read_text())
+    if league:
+        data = [d for d in data if str(d.get("league", "")).upper() == league.upper()]
+    rows = data[-limit:]
+    return [{c: d.get(c) for c in _VIEW_COLS} for d in rows]
+
+
+def _print_table(rows: list[dict]) -> None:
+    """Print rows as a simple aligned table."""
+    cols = _VIEW_COLS
+    widths = {c: len(c) for c in cols}
+    for r in rows:
+        for c in cols:
+            widths[c] = max(widths[c], len(str(r.get(c) if r.get(c) is not None else "")))
+    header = "  ".join(c.ljust(widths[c]) for c in cols)
+    print(header)
+    print("  ".join("-" * widths[c] for c in cols))
+    for r in rows:
+        print("  ".join(
+            str(r.get(c) if r.get(c) is not None else "").ljust(widths[c]) for c in cols))
+    print(f"\n{len(rows)} row(s)")
 
 
 def _initial_state(args) -> dict:
@@ -187,6 +247,30 @@ class PrizePicksShell(cmd.Cmd):
             print(f"  {k:18} {self._display(k, self.state[k])}")
 
     do_config = do_show
+
+    def do_results(self, arg):
+        "results [league] [N]  Show recent scraped rows from the output file."
+        league, limit = None, 20
+        for tok in shlex.split(arg):
+            if tok.isdigit():
+                limit = int(tok)
+            else:
+                league = tok
+        try:
+            rows = _load_recent(self.state["out"], league, limit)
+        except FileNotFoundError:
+            print(f"no data yet at {self.state['out']} - run a scrape first.")
+            return
+        except Exception as exc:
+            print(f"error reading {self.state['out']}: {exc}")
+            return
+        if not rows:
+            where = f" for league '{league}'" if league else ""
+            print(f"no rows{where} in {self.state['out']}.")
+            return
+        _print_table(rows)
+
+    do_head = do_results
 
     def _display(self, key, value):
         if key == "api_key":
