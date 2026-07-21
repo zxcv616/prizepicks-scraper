@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import argparse
 import cmd
+import contextlib
 import os
 import re
 import shlex
 import shutil
 import sys
+import threading
+import time
 
 from . import __version__
 from .cli import cmd_leagues, cmd_parse_file, cmd_scrape, run_command
@@ -82,6 +85,94 @@ def _banner(state: dict) -> str:
         out.append(f"{o}│{r}{row}{' ' * pad}{o}│{r}")
     out.append(f"{o}╰{'─' * inner}╯{r}")
     return "\n".join(out)
+
+
+class _Spinner:
+    """A tiny braille spinner animated on a background thread."""
+
+    FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self, label: str, stream):
+        self.label = label
+        self.stream = stream
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._thread = None
+        self._active = False
+
+    def start(self) -> None:
+        self._active = True
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
+
+    def _spin(self) -> None:
+        i = 0
+        while not self._stop.is_set():
+            with self._lock:
+                if self._stop.is_set():
+                    break
+                frame = self.FRAMES[i % len(self.FRAMES)]
+                self.stream.write(f"\r\x1b[{ORANGE}m{frame}\x1b[0m {self.label}")
+                self.stream.flush()
+            i += 1
+            time.sleep(0.08)
+
+    def stop(self) -> None:
+        if not self._active:
+            return
+        self._active = False
+        self._stop.set()
+        if self._thread:
+            self._thread.join()
+        with self._lock:
+            self.stream.write("\r\x1b[2K")  # carriage return + clear line
+            self.stream.flush()
+
+
+@contextlib.contextmanager
+def _spinner(label: str):
+    """Show a spinner until the wrapped code produces its first output.
+
+    A write-proxy on stdout/stderr stops the spinner the instant the command
+    prints anything, so the animation never collides with real output. No-op
+    when not attached to a color TTY.
+    """
+    if not (_use_color() and sys.stderr.isatty()):
+        yield
+        return
+
+    real_out, real_err = sys.stdout, sys.stderr
+    spin = _Spinner(label, real_err)
+    stopped = threading.Event()
+
+    def stop_once():
+        if not stopped.is_set():
+            stopped.set()
+            spin.stop()
+
+    class _Proxy:
+        def __init__(self, real):
+            self._real = real
+
+        def write(self, s):
+            if s:
+                stop_once()
+            return self._real.write(s)
+
+        def flush(self):
+            return self._real.flush()
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    spin.start()
+    sys.stdout, sys.stderr = _Proxy(real_out), _Proxy(real_err)
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = real_out, real_err
+        stop_once()
+
 
 # Backend choices offered by the interactive chooser / `set backend`.
 _BROWSER_ALIASES = {"free", "browser", "local"}
@@ -220,17 +311,18 @@ class PrizePicksShell(cmd.Cmd):
             data["unlocker"] = None
         return argparse.Namespace(**data)
 
-    def _run(self, func, **overrides) -> None:
+    def _run(self, func, label="working", **overrides) -> None:
         ns = self._ns(func=func, **overrides)
         try:
-            run_command(ns)
+            with _spinner(label):
+                run_command(ns)
         except Exception as exc:  # never kill the shell on an error
             print(f"error: {exc}", file=sys.stderr)
 
     # -- commands ----------------------------------------------------------
     def do_leagues(self, arg):
         "leagues            List live league ids."
-        self._run(cmd_leagues)
+        self._run(cmd_leagues, label="fetching leagues")
 
     def do_scrape(self, arg):
         "scrape LoL CS2 ..  Fetch, parse and store projections for the given leagues."
@@ -238,7 +330,7 @@ class PrizePicksShell(cmd.Cmd):
         if not leagues:
             print("usage: scrape <league> [league ...]   e.g. scrape LoL CS2 MLB")
             return
-        self._run(cmd_scrape, league=leagues)
+        self._run(cmd_scrape, label=f"scraping {', '.join(leagues)}", league=leagues)
 
     def do_parse_file(self, arg):
         "parse-file PATH    Parse a saved raw JSON payload (offline)."
@@ -246,7 +338,7 @@ class PrizePicksShell(cmd.Cmd):
         if not parts:
             print("usage: parse-file <path.json>")
             return
-        self._run(cmd_parse_file, file=parts[0],
+        self._run(cmd_parse_file, label="parsing", file=parts[0],
                   out=parts[1] if len(parts) > 1 else self.state["out"])
 
     def do_set(self, arg):

@@ -45,6 +45,9 @@ def test_scrape_uses_cache(tmp_path, monkeypatch):
     payload = json.loads(FIXTURE.read_text())
     calls = []
     monkeypatch.setattr(cli, "_client", lambda args: _FakeClient(payload, calls))
+    # Isolate from the real on-disk league-name cache.
+    monkeypatch.setattr(cli, "load_leagues_cache", lambda: {})
+    monkeypatch.setattr(cli, "save_leagues_cache", lambda lgs: None)
     db = tmp_path / "p.db"
 
     def scrape(max_age):
@@ -52,7 +55,7 @@ def test_scrape_uses_cache(tmp_path, monkeypatch):
             league=["MLB"], out=str(db), per_page=250, save_raw=None, max_age=max_age))
 
     scrape(None)
-    assert calls == [2]           # fetched once
+    assert calls == [2]           # fetched once (hardcoded MLB -> 2)
 
     calls.clear()
     scrape("1h")
