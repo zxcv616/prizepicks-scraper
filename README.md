@@ -1,5 +1,7 @@
 # prizepicks-scraper
 
+![pps interactive shell](assets/banner.png)
+
 Fetch PrizePicks projections (player prop lines) and store them as clean,
 timestamped rows. Handles the site's DataDome bot protection and denormalizes
 the JSON:API response into flat records you can query.
