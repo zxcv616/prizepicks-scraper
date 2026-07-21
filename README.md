@@ -30,14 +30,14 @@ Two equivalent ways: an interactive shell, or direct commands.
 Run with no arguments:
 
 ```
-$ prizepicks
-prizepicks 0.1.0 - interactive shell
+$ pps
+pps 0.1.0 - prizepicks-scraper interactive shell
 commands: leagues | scrape <league...> | set <k> <v> | show | help | exit
 
-prizepicks> set unlocker zenrows
-prizepicks> scrape LoL CS2
-prizepicks> show
-prizepicks> exit
+pps> set unlocker zenrows
+pps> scrape LoL CS2
+pps> show
+pps> exit
 ```
 
 - `leagues` - list league ids
@@ -49,10 +49,10 @@ prizepicks> exit
 ### Direct commands
 
 ```bash
-prizepicks leagues
-prizepicks scrape --league LoL CS2 --out data/projections.db
-prizepicks scrape --league MLB --out data/mlb.csv
-prizepicks parse-file raw.json --out out.csv     # parse a saved payload, offline
+pps leagues
+pps scrape --league LoL CS2 --out data/projections.db
+pps scrape --league MLB --out data/mlb.csv
+pps parse-file raw.json --out out.csv     # parse a saved payload, offline
 ```
 
 Output format follows the file extension: `.db`/`.sqlite` (SQLite, append-only
@@ -70,7 +70,7 @@ browser, no manual steps. Works headless and on a schedule.
 
 ```bash
 export PP_UNLOCKER_KEY=your_key
-prizepicks --unlocker zenrows scrape --league LoL --out data/projections.db
+pps --unlocker zenrows scrape --league LoL --out data/projections.db
 ```
 
 Providers: `zenrows`, `scraperapi`, `scrapingbee`, or `generic` with
@@ -83,13 +83,13 @@ Runs real Chrome via Playwright. Needs a residential IP to pass reliably.
 
 ```bash
 # Residential proxy, headless, unattended:
-prizepicks --proxy http://user:pass@host:port scrape --league LoL -o data/props.db
+pps --proxy http://user:pass@host:port scrape --league LoL -o data/props.db
 
 # Or attach to a Chrome you drive yourself (most reliable, one-time manual):
 #   1. /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
 #        --remote-debugging-port=9222 --user-data-dir=/tmp/pp-chrome
 #   2. In that window, load https://app.prizepicks.com
-prizepicks --cdp http://127.0.0.1:9222 scrape --league LoL -o data/props.db
+pps --cdp http://127.0.0.1:9222 scrape --league LoL -o data/props.db
 ```
 
 ## Output columns

@@ -20,7 +20,8 @@ browser = ["playwright>=1.40", "patchright>=1.40"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-prizepicks = "prizepicks_scraper.cli:main"
+pps = "prizepicks_scraper.cli:main"
+prizepicks = "prizepicks_scraper.cli:main"  # alias
 
 [tool.setuptools.packages.find]
 where = ["src"]

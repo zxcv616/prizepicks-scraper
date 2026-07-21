@@ -47,7 +47,7 @@ def _initial_state(args) -> dict:
 
 class PrizePicksShell(cmd.Cmd):
     intro = ""  # printed manually in run_shell so we can style it
-    prompt = "prizepicks> "
+    prompt = "pps> "
 
     def __init__(self, args):
         super().__init__()
@@ -155,7 +155,7 @@ def run_shell(args) -> int:
         build_parser().print_help()
         return 0
     shell = PrizePicksShell(args)
-    print(f"prizepicks {__version__} - interactive shell")
+    print(f"pps {__version__} - prizepicks-scraper interactive shell")
     print("commands: leagues | scrape <league...> | set <k> <v> | show | help | exit")
     backend = shell.state["unlocker"] or ("cdp" if shell.state["cdp"] else "browser")
     print(f"backend: {backend}   output: {shell.state['out']}\n")

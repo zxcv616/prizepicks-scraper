@@ -1,4 +1,4 @@
-"""Command-line interface: ``prizepicks <command>``.
+"""Command-line interface: ``pps <command>``.
 
 Run with no command to open an interactive shell (see shell.py).
 
@@ -107,7 +107,7 @@ def cmd_parse_file(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="prizepicks", description=__doc__,
+    p = argparse.ArgumentParser(prog="pps", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--profile", default=".pp_profile",
                    help="Browser profile dir (persists DataDome clearance).")
