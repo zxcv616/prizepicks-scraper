@@ -9,7 +9,8 @@ FIXTURE = Path(__file__).parent / "fixtures" / "sample_projections.json"
 def _blank_args(**kw):
     base = dict(unlocker=None, api_key=None, unlocker_template=None, out=None,
                 per_page=None, save_raw=None, proxy=None, cdp=None, profile=None,
-                headful=None, channel=None, no_chrome=None)
+                headful=None, channel=None, no_chrome=None, backend=None,
+                max_age=None)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -53,6 +54,27 @@ def test_exit_returns_true():
     s = PrizePicksShell(_blank_args())
     assert s.onecmd("exit") is True
     assert s.onecmd("quit") is True
+
+
+def test_set_backend_free_and_provider():
+    s = PrizePicksShell(_blank_args())
+    s.onecmd("set backend free")
+    assert s.state["backend"] == "browser"
+    assert s._ns().unlocker is None            # free -> no unlocker
+    s.onecmd("set backend zenrows")
+    assert s.state["backend"] == "zenrows"
+    assert s._ns().unlocker == "zenrows"        # provider -> unlocker
+
+
+def test_set_backend_rejects_unknown():
+    s = PrizePicksShell(_blank_args())
+    s.onecmd("set backend nonsense")
+    assert s.state["backend"] is None           # unchanged
+
+
+def test_backend_seeded_from_launch_flag():
+    s = PrizePicksShell(_blank_args(unlocker="scraperapi"))
+    assert s.state["backend"] == "scraperapi"   # chooser will be skipped
 
 
 def test_banner_lines_are_aligned(monkeypatch):

@@ -60,7 +60,7 @@ def _banner(state: dict) -> str:
         f"{b}prizepicks-scraper{r}",
         f"{d}PrizePicks projections scraper{r}",
     ]
-    backend = state["unlocker"] or ("cdp" if state["cdp"] else "browser")
+    backend = _backend_label(state)
 
     # Assemble the content rows: logo on the left, labels on the right.
     rows: list[str] = [""]
@@ -83,8 +83,13 @@ def _banner(state: dict) -> str:
     out.append(f"{o}╰{'─' * inner}╯{r}")
     return "\n".join(out)
 
+# Backend choices offered by the interactive chooser / `set backend`.
+_BROWSER_ALIASES = {"free", "browser", "local"}
+_UNLOCKER_PROVIDERS = {"zenrows", "scraperapi", "scrapingbee", "generic"}
+
 # Session settings and their defaults. `set <key> <value>` changes these.
 _DEFAULTS = {
+    "backend": None,         # "browser" (free) | a provider name | None (unchosen)
     "unlocker": None,        # zenrows | scraperapi | scrapingbee | generic | None
     "api_key": None,         # falls back to $PP_UNLOCKER_KEY
     "unlocker_template": None,
@@ -172,7 +177,20 @@ def _initial_state(args) -> dict:
         v = getattr(args, k, None)
         if v is not None and v != argparse.SUPPRESS:
             state[k] = v
+    # If launched with --unlocker or --cdp, treat the backend as already chosen.
+    if state["backend"] is None:
+        if state["unlocker"]:
+            state["backend"] = state["unlocker"]
+        elif state["cdp"]:
+            state["backend"] = "browser"
     return state
+
+
+def _backend_label(state: dict) -> str:
+    b = state.get("backend")
+    if b in _BROWSER_ALIASES or (b is None and not state.get("unlocker")):
+        return "browser (free, your IP)"
+    return f"{b} (paid unlocker)"
 
 
 class PrizePicksShell(cmd.Cmd):
@@ -193,6 +211,13 @@ class PrizePicksShell(cmd.Cmd):
         """Build an args namespace from session state + per-command overrides."""
         data = dict(self.state)
         data.update(overrides)
+        # Translate the friendly `backend` choice into the `unlocker` field the
+        # command functions understand. browser/None -> no unlocker (free path).
+        b = data.get("backend")
+        if b and b not in _BROWSER_ALIASES:
+            data["unlocker"] = b
+        else:
+            data["unlocker"] = None
         return argparse.Namespace(**data)
 
     def _run(self, func, **overrides) -> None:
@@ -234,6 +259,9 @@ class PrizePicksShell(cmd.Cmd):
         if key not in self.state:
             print(f"unknown setting '{key}'. keys: {', '.join(self.state)}")
             return
+        if key == "backend":
+            self._set_backend(value)
+            return
         if key in _BOOL_KEYS:
             value = value.lower() in ("1", "true", "yes", "on")
         elif key in _INT_KEYS:
@@ -243,9 +271,49 @@ class PrizePicksShell(cmd.Cmd):
         self.state[key] = value
         print(f"{key} = {self._display(key, value)}")
 
+    def _set_backend(self, value: str) -> None:
+        v = value.strip().lower()
+        if v in _BROWSER_ALIASES:
+            self.state["backend"] = "browser"
+        elif v in _UNLOCKER_PROVIDERS:
+            self.state["backend"] = v
+            if not (self.state["api_key"] or os.environ.get("PP_UNLOCKER_KEY")):
+                print(f"note: {v} needs an API key - "
+                      f"`set api_key <key>` or export PP_UNLOCKER_KEY.")
+        else:
+            print(f"unknown backend '{value}'. options: free, "
+                  f"{', '.join(sorted(_UNLOCKER_PROVIDERS))}")
+            return
+        print(f"backend = {_backend_label(self.state)}")
+
+    def do_backend(self, arg):
+        "backend [name]     Show or set the backend (free, zenrows, ...)."
+        if arg.strip():
+            self._set_backend(arg)
+        else:
+            self._choose_backend()
+
+    def _choose_backend(self) -> None:
+        """Interactive one-time chooser: free browser vs. paid unlocker."""
+        print("How do you want to fetch data?")
+        print("  1) free    - your own browser + home IP, no account (default)")
+        print("  2) zenrows - paid web-unlocker API, hands-off (needs a key)")
+        try:
+            choice = input("choose [1]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = ""
+            print()
+        if choice == "2":
+            self._set_backend("zenrows")
+        else:
+            self._set_backend("free")
+
     def do_show(self, arg):
         "show               Show current settings."
+        print(f"  {'backend':18} {_backend_label(self.state)}")
         for k in self.state:
+            if k in ("backend", "unlocker"):
+                continue
             print(f"  {k:18} {self._display(k, self.state[k])}")
 
     do_config = do_show
@@ -318,6 +386,10 @@ def run_shell(args) -> int:
         sys.stdout.write("\x1b[2J\x1b[3J\x1b[H")  # clear screen + scrollback
     print(_banner(shell.state))
     print()
+    # First-run backend chooser (skipped if a backend was set via launch flags).
+    if shell.state.get("backend") is None:
+        shell._choose_backend()
+        print()
     try:
         shell.cmdloop()
     except KeyboardInterrupt:

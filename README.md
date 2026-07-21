@@ -40,10 +40,14 @@ pps ❯ show
 pps ❯ exit
 ```
 
+On first launch it asks which backend you want: **free** (your own browser) or a
+paid **unlocker** (see below). Change it anytime with `backend`.
+
+- `backend [name]` - choose the backend: `backend free` or `backend zenrows`
 - `leagues` - list league ids
 - `scrape <league...>` - fetch and store (names or ids: `scrape LoL 2 CS2`)
 - `results [league] [N]` - show recent scraped rows (`results LoL 20`)
-- `set <key> <value>` - change a setting (`set out data/lol.csv`, `set unlocker zenrows`)
+- `set <key> <value>` - change a setting (`set out data/lol.csv`, `set api_key ...`)
 - `show` - print current settings
 - `help`, `exit`
 
