@@ -16,7 +16,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .leagues import parse_leagues, resolve_league_id
+from .leagues import (
+    leagues_name_map,
+    load_leagues_cache,
+    parse_leagues,
+    resolve_league_id,
+    save_leagues_cache,
+)
 from .parse import parse_projections
 from .store import latest_snapshot_age, write_csv, write_json, write_sqlite
 
@@ -67,6 +73,7 @@ def cmd_leagues(args) -> int:
     with _client(args) as client:
         payload = client.fetch_leagues()
     leagues = parse_leagues(payload)
+    save_leagues_cache(leagues)  # so `scrape <name>` resolves offline next time
     leagues.sort(key=lambda x: (x.get("name") or "").upper())
     for lg in leagues:
         active = "" if lg.get("active") in (None, True) else " (inactive)"
@@ -90,42 +97,71 @@ def _store_rows(rows, args) -> None:
 
 
 def cmd_scrape(args) -> int:
-    league_ids = [resolve_league_id(x) for x in args.league]
     scraped_at = _utcstamp()
     raw_dir = Path(args.save_raw) if args.save_raw else None
-
-    # Cache window: if a stored snapshot for a league is younger than max-age,
-    # reuse it instead of fetching. Only applies to the SQLite (append-only)
-    # output; CSV/JSON overwrite, so they always fetch.
     max_age = _parse_duration(getattr(args, "max_age", None))
-    to_fetch, cached = [], []
-    for lid in league_ids:
+
+    # Resolve league names offline first (hardcoded set + cached live map).
+    # Names we can't resolve yet trigger a one-time live /leagues fetch below.
+    name_map = load_leagues_cache()
+    league_ids: list = []
+    unresolved: list[str] = []
+    for x in args.league:
+        try:
+            league_ids.append(resolve_league_id(x, extra=name_map))
+        except ValueError:
+            unresolved.append(x)
+
+    def is_fresh(lid) -> float | None:
         age = latest_snapshot_age(args.out, lid) if max_age else None
-        if age is not None and age <= max_age:
-            cached.append((lid, age))
-        else:
-            to_fetch.append(lid)
+        return age if (age is not None and age <= max_age) else None
 
-    for lid, age in cached:
-        print(f"league {lid}: cached ({int(age)}s old, within max-age; skipped fetch)",
-              file=sys.stderr)
+    # Only open a client (which may cost credits / launch a browser) if there's
+    # a name to look up or a league whose snapshot is stale/missing.
+    need_client = bool(unresolved) or any(is_fresh(lid) is None for lid in league_ids)
 
-    all_rows = []
-    if to_fetch:  # only open a client (and pay/launch) if something's stale
-        with _client(args) as client:
-            for lid in to_fetch:
-                payload = client.fetch_projections(lid, per_page=args.per_page)
-                if raw_dir:
-                    raw_dir.mkdir(parents=True, exist_ok=True)
-                    rawf = raw_dir / f"league_{lid}_{scraped_at.replace(':', '-')}.json"
-                    rawf.write_text(json.dumps(payload))
-                rows = parse_projections(payload, scraped_at=scraped_at)
-                print(f"league {lid}: {len(rows)} projections", file=sys.stderr)
-                all_rows.extend(rows)
+    all_rows, any_cached = [], False
+    if not need_client:
+        for lid in league_ids:
+            print(f"league {lid}: cached (within max-age; skipped fetch)", file=sys.stderr)
+        print("All requested leagues served from cache; nothing fetched.")
+        return 0
+
+    with _client(args) as client:
+        if unresolved:  # resolve names against the live league list, once
+            parsed = parse_leagues(client.fetch_leagues())
+            save_leagues_cache(parsed)
+            live = leagues_name_map(parsed)
+            for x in unresolved:
+                try:
+                    league_ids.append(resolve_league_id(x, extra=live))
+                except ValueError:
+                    print(f"unknown league '{x}' (not in live list); skipping.",
+                          file=sys.stderr)
+
+        seen = set()
+        for lid in league_ids:
+            if lid in seen:
+                continue
+            seen.add(lid)
+            age = is_fresh(lid)
+            if age is not None:
+                print(f"league {lid}: cached ({int(age)}s old; skipped fetch)",
+                      file=sys.stderr)
+                any_cached = True
+                continue
+            payload = client.fetch_projections(lid, per_page=args.per_page)
+            if raw_dir:
+                raw_dir.mkdir(parents=True, exist_ok=True)
+                rawf = raw_dir / f"league_{lid}_{scraped_at.replace(':', '-')}.json"
+                rawf.write_text(json.dumps(payload))
+            rows = parse_projections(payload, scraped_at=scraped_at)
+            print(f"league {lid}: {len(rows)} projections", file=sys.stderr)
+            all_rows.extend(rows)
 
     if all_rows:
         _store_rows(all_rows, args)
-    elif cached:
+    elif any_cached:
         print("All requested leagues served from cache; nothing fetched.")
     else:
         print("No projections returned (off-season or blocked).", file=sys.stderr)

@@ -1,6 +1,6 @@
 """Interactive shell (REPL) for prizepicks.
 
-Launched when ``prizepicks`` is run with no subcommand. Holds backend/output
+Launched when ``pps`` is run with no subcommand. Holds backend/output
 settings as session state you can change with ``set``, and dispatches to the
 same command functions as the direct CLI, so behavior is identical either way.
 """
