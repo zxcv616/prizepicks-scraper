@@ -18,7 +18,20 @@ from pathlib import Path
 
 from .leagues import parse_leagues, resolve_league_id
 from .parse import parse_projections
-from .store import write_csv, write_json, write_sqlite
+from .store import latest_snapshot_age, write_csv, write_json, write_sqlite
+
+
+def _parse_duration(s) -> float:
+    """Parse '10m', '1h', '30s', '2d', or a bare number of seconds. 0/None -> 0."""
+    if not s:
+        return 0.0
+    s = str(s).strip().lower()
+    if s in ("0", "none", "off", ""):
+        return 0.0
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    if s[-1] in units:
+        return float(s[:-1]) * units[s[-1]]
+    return float(s)  # bare number = seconds
 
 
 def _utcstamp() -> str:
@@ -79,23 +92,44 @@ def _store_rows(rows, args) -> None:
 def cmd_scrape(args) -> int:
     league_ids = [resolve_league_id(x) for x in args.league]
     scraped_at = _utcstamp()
-    all_rows = []
     raw_dir = Path(args.save_raw) if args.save_raw else None
 
-    with _client(args) as client:
-        for lid in league_ids:
-            payload = client.fetch_projections(lid, per_page=args.per_page)
-            if raw_dir:
-                raw_dir.mkdir(parents=True, exist_ok=True)
-                rawf = raw_dir / f"league_{lid}_{scraped_at.replace(':', '-')}.json"
-                rawf.write_text(json.dumps(payload))
-            rows = parse_projections(payload, scraped_at=scraped_at)
-            print(f"league {lid}: {len(rows)} projections", file=sys.stderr)
-            all_rows.extend(rows)
+    # Cache window: if a stored snapshot for a league is younger than max-age,
+    # reuse it instead of fetching. Only applies to the SQLite (append-only)
+    # output; CSV/JSON overwrite, so they always fetch.
+    max_age = _parse_duration(getattr(args, "max_age", None))
+    to_fetch, cached = [], []
+    for lid in league_ids:
+        age = latest_snapshot_age(args.out, lid) if max_age else None
+        if age is not None and age <= max_age:
+            cached.append((lid, age))
+        else:
+            to_fetch.append(lid)
 
-    if not all_rows:
+    for lid, age in cached:
+        print(f"league {lid}: cached ({int(age)}s old, within max-age; skipped fetch)",
+              file=sys.stderr)
+
+    all_rows = []
+    if to_fetch:  # only open a client (and pay/launch) if something's stale
+        with _client(args) as client:
+            for lid in to_fetch:
+                payload = client.fetch_projections(lid, per_page=args.per_page)
+                if raw_dir:
+                    raw_dir.mkdir(parents=True, exist_ok=True)
+                    rawf = raw_dir / f"league_{lid}_{scraped_at.replace(':', '-')}.json"
+                    rawf.write_text(json.dumps(payload))
+                rows = parse_projections(payload, scraped_at=scraped_at)
+                print(f"league {lid}: {len(rows)} projections", file=sys.stderr)
+                all_rows.extend(rows)
+
+    if all_rows:
+        _store_rows(all_rows, args)
+    elif cached:
+        print("All requested leagues served from cache; nothing fetched.")
+    else:
         print("No projections returned (off-season or blocked).", file=sys.stderr)
-    _store_rows(all_rows, args)
+        _store_rows(all_rows, args)
     return 0
 
 
@@ -144,6 +178,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--per-page", type=int, default=250)
     sp.add_argument("--save-raw", default=None,
                     help="Also save raw JSON payloads to this dir.")
+    sp.add_argument("--max-age", default=None,
+                    help="Reuse the stored snapshot if it's younger than this "
+                         "(e.g. 10m, 1h). Avoids re-fetching. SQLite output only.")
     sp.set_defaults(func=cmd_scrape)
 
     sp = sub.add_parser("parse-file", help="Parse a saved raw payload (offline).")

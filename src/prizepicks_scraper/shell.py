@@ -91,6 +91,8 @@ _DEFAULTS = {
     "out": "data/projections.db",
     "per_page": 250,
     "save_raw": None,
+    "max_age": None,        # e.g. "10m" - reuse a snapshot younger than this
+
     "proxy": None,
     "cdp": None,
     "profile": ".pp_profile",

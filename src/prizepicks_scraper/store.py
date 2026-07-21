@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -40,6 +41,36 @@ def write_sqlite(rows: Sequence[Projection], db_path: str | Path) -> int:
         return conn.total_changes
     finally:
         conn.close()
+
+
+def latest_snapshot_age(db_path: str | Path, league_id) -> float | None:
+    """Seconds since the most recent stored snapshot for ``league_id``.
+
+    Returns None if the output isn't a SQLite db, doesn't exist yet, or has no
+    rows for that league (caching only applies to the append-only SQLite store).
+    """
+    path = Path(db_path)
+    if path.suffix.lower() not in (".db", ".sqlite", ".sqlite3") or not path.exists():
+        return None
+    conn = sqlite3.connect(str(path))
+    try:
+        row = conn.execute(
+            "SELECT MAX(scraped_at) FROM projections WHERE league_id = ?",
+            (str(league_id),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None  # table not created yet
+    finally:
+        conn.close()
+    if not row or not row[0]:
+        return None
+    try:
+        ts = datetime.fromisoformat(row[0])
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts).total_seconds()
 
 
 def write_csv(rows: Iterable[Projection], csv_path: str | Path) -> int:

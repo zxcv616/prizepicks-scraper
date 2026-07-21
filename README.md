@@ -59,6 +59,20 @@ pps parse-file raw.json --out out.csv     # parse a saved payload, offline
 Output format follows the file extension: `.db`/`.sqlite` (SQLite, append-only
 snapshots), `.csv`, or `.json`.
 
+### Caching (reuse recent snapshots)
+
+The board is the same for everyone, so there's no need to re-fetch it constantly.
+With `--max-age`, a scrape reuses the stored snapshot if it's younger than the
+window and only hits the network when the data is stale - saving requests (and
+unlocker credits), and letting you run it freely on a schedule.
+
+```bash
+pps --unlocker zenrows scrape --league LoL --max-age 10m --out data/projections.db
+```
+
+In the shell: `set max_age 10m`. Applies to SQLite output only (CSV/JSON
+overwrite each run). `--max-age 0` (default) always fetches.
+
 ## Getting data past DataDome
 
 `api.prizepicks.com` blocks on IP reputation + browser fingerprint, so you need
