@@ -107,16 +107,20 @@ The residential/antibot tier each provider needs is enabled automatically.
 Runs real Chrome via Playwright on your own connection - no account. Install the
 extra first: `pip install -e ".[browser]" && playwright install chromium`.
 
-```bash
-# Residential proxy, headless, unattended:
-pps --proxy http://user:pass@host:port scrape --league LoL -o data/props.db
+It's a single command:
 
-# Or attach to a Chrome you drive yourself (most reliable, one-time manual):
-#   1. /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-#        --remote-debugging-port=9222 --user-data-dir=/tmp/pp-chrome
-#   2. In that window, load https://app.prizepicks.com
-pps --cdp http://127.0.0.1:9222 scrape --league LoL -o data/props.db
+```bash
+pps scrape --league LoL --out data/projections.db
 ```
+
+This tries headless first. If DataDome blocks it, pps automatically opens a
+Chrome window - solve the check once, and it continues and stores the result in
+the same command. The clearance is remembered (`.pp_profile/`), so later runs go
+back to headless with no prompt.
+
+Advanced (optional): `--proxy http://user:pass@host:port` to route through a
+residential proxy, or `--cdp http://127.0.0.1:9222` to attach to a Chrome you
+launched yourself.
 
 ## Output columns
 

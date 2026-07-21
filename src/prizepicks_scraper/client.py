@@ -19,6 +19,7 @@ once; the persistent profile then keeps you cleared.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -55,6 +56,7 @@ class BrowserClient:
         clearance_timeout: Optional[int] = None,
         cdp_url: Optional[str] = None,
         channel: Optional[str] = "chrome",
+        auto_headful: bool = True,
     ):
         self.profile_dir = Path(profile_dir)
         self.headful = headful
@@ -62,6 +64,10 @@ class BrowserClient:
         self.warmup_ms = warmup_ms
         self.request_delay = request_delay
         self.proxy = proxy
+        # If a headless run is blocked by DataDome, automatically reopen a
+        # visible window so the user can solve the challenge once, then continue
+        # in the same command. The persistent profile remembers the clearance.
+        self.auto_headful = auto_headful
         # Attach to an already-running real browser over the DevTools protocol
         # instead of launching one. This inherits the genuine fingerprint and
         # session — the most reliable way past DataDome.
@@ -134,6 +140,10 @@ class BrowserClient:
             self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
             return
 
+        self._launch_persistent()
+
+    def _launch_persistent(self) -> None:
+        """Launch the persistent-context browser using current self.headful."""
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         launch_kwargs = dict(
             user_data_dir=str(self.profile_dir),
@@ -177,41 +187,56 @@ class BrowserClient:
     def _is_challenge(status: int, body: str) -> bool:
         return status != 200 or body.lstrip().startswith("<")
 
-    def _warmup(self) -> None:
-        """Load the web app and wait until DataDome clears our session.
+    def _navigate_and_poll(self, timeout: float) -> tuple[bool, str]:
+        """Load the web app, then poll the API until cleared or timeout.
 
-        Polls a lightweight API endpoint until it returns JSON (cleared) or the
-        clearance timeout elapses. In headful mode the browser window is visible
-        during this window so a human can solve an interactive challenge; the
-        persistent profile then remembers the clearance for future runs.
+        Returns (cleared, last_response_snippet).
         """
-        if self._warmed:
-            return
         self._page.goto(WEB_APP_URL, wait_until="domcontentloaded", timeout=60000)
         self._page.wait_for_timeout(self.warmup_ms)
-
-        if self.headful:
-            print("A browser window is open. If you see a captcha/challenge, "
-                  "solve it now — waiting up to "
-                  f"{self.clearance_timeout}s for clearance...", flush=True)
-
-        deadline = time.monotonic() + self.clearance_timeout
+        deadline = time.monotonic() + timeout
         last = ""
         while time.monotonic() < deadline:
             resp = self._page.request.get(LEAGUES_URL, timeout=45000)
             body = resp.text()
             if not self._is_challenge(resp.status, body):
-                self._warmed = True
                 self._clearance = json.loads(body)  # cache: often the first call
-                return
+                return True, ""
             last = f"HTTP {resp.status}: {body[:160]}".replace("\n", " ")
             time.sleep(3)
+        return False, last
 
-        raise DataDomeBlocked(
-            f"Never cleared DataDome within {self.clearance_timeout}s. "
-            f"Run with headful=True on a residential IP and solve the challenge. "
-            f"Last response: {last}"
-        )
+    def _warmup(self) -> None:
+        """Ensure the session is cleared past DataDome before fetching.
+
+        Tries the current (usually headless) mode first. If that's blocked and
+        auto_headful is on, it reopens a visible Chrome window so the user can
+        solve the challenge once, then continues in the same command. The
+        persistent profile remembers the clearance, so later runs are headless.
+        """
+        if self._warmed:
+            return
+        cleared, last = self._navigate_and_poll(self.clearance_timeout)
+
+        can_open_window = self.auto_headful and not self.headful \
+            and not self.cdp_url and sys.stdin.isatty()
+        if not cleared and can_open_window:
+            print("\nDataDome blocked the headless request. Opening a Chrome "
+                  "window — solve any check there and it will continue "
+                  "automatically...", flush=True)
+            self.close()
+            self._pw = self._sync_playwright().start()
+            self.headful = True
+            self.clearance_timeout = max(self.clearance_timeout, 180)
+            self._launch_persistent()
+            cleared, last = self._navigate_and_poll(self.clearance_timeout)
+
+        if not cleared:
+            raise DataDomeBlocked(
+                f"Never cleared DataDome. Last response: {last}\n"
+                "Try again on a residential IP, or use --unlocker for the paid path."
+            )
+        self._warmed = True
 
     def _get_json(self, url: str) -> dict:
         self._warmup()
