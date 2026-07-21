@@ -32,7 +32,8 @@ def _c(code: str) -> str:
     return f"\x1b[{code}m" if _use_color() else ""
 
 
-ORANGE = "38;5;208"
+# Accent color for the CLI (logo, prompt, spinner, borders). 256-color code.
+ACCENT = "38;5;39"   # bright blue
 DIM = "2"
 BOLD = "1"
 RESET = "0"
@@ -56,7 +57,7 @@ def _vis_len(s: str) -> int:
 def _banner(state: dict) -> str:
     width = min(shutil.get_terminal_size((80, 24)).columns, 80)
     inner = width - 2
-    o, d, b, r = _c(ORANGE), _c(DIM), _c(BOLD), _c(RESET)
+    o, d, b, r = _c(ACCENT), _c(DIM), _c(BOLD), _c(RESET)
 
     title = f"{b}{o}pps{r}{d} v{__version__}{r}"
     right = [
@@ -112,7 +113,7 @@ class _Spinner:
                 if self._stop.is_set():
                     break
                 frame = self.FRAMES[i % len(self.FRAMES)]
-                self.stream.write(f"\r\x1b[{ORANGE}m{frame}\x1b[0m {self.label}")
+                self.stream.write(f"\r\x1b[{ACCENT}m{frame}\x1b[0m {self.label}")
                 self.stream.flush()
             i += 1
             time.sleep(0.08)
@@ -293,7 +294,7 @@ class PrizePicksShell(cmd.Cmd):
         # Styled prompt. Non-printing sequences are wrapped in \001..\002 so
         # readline counts the visible width correctly.
         if _use_color():
-            self.prompt = f"\001\x1b[{ORANGE}m\002pps ❯\001\x1b[0m\002 "
+            self.prompt = f"\001\x1b[{ACCENT}m\002pps ❯\001\x1b[0m\002 "
         else:
             self.prompt = "pps> "
 
